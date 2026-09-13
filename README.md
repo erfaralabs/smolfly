@@ -1,9 +1,9 @@
 # 🪰 SmolFly: Injecting a 1.81M-Synapse Drosophila Connectome as a Stateful Reservoir into SmolLM2
 
-[![ICLR 2025 Under Review](https://img.shields.io/badge/ICLR%202025-Under%20Review-red.svg)](https://openreview.net)
-[![Base Model: SmolLM2-360M](https://img.shields.io/badge/Base%20Model-SmolLM2--360M-blue.svg)](https://huggingface.co/HuggingFaceTB/SmolLM2-360M)
-[![VRAM Footprint](https://img.shields.io/badge/Connectome%20VRAM-%3C15MB%20(CSR)-emerald.svg)](#hardware-footprint--profiling)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-orange.svg)](https://pytorch.org/)
+[![Status: Research Release](https://img.shields.io/badge/Status-Research%20Release-blue.svg)](#abstract)
+[![Base Model: SmolLM2-360M](https://img.shields.io/badge/Base%20Model-SmolLM2--360M-6366f1.svg)](https://huggingface.co/HuggingFaceTB/SmolLM2-360M)
+[![VRAM Footprint](https://img.shields.io/badge/Connectome%20VRAM-%3C15MB%20(CSR)-10b981.svg)](#hardware-footprint--profiling)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0%2B-ee4c2c.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Official implementation and reference architecture for **SmolFly**, an unweighted, continuous-time leaky-integrator recurrent reservoir constructed directly from the full adult *Drosophila melanogaster* brain connectome (**28,994 neurons**, **1,814,208 directed synaptic edges**) and hooked into **Layer 16** of [SmolLM2-360M](https://huggingface.co/HuggingFaceTB/SmolLM2-360M).
@@ -14,13 +14,13 @@ Official implementation and reference architecture for **SmolFly**, an unweighte
 
 > Small language models (SLMs) lack native mechanisms for state persistence across autoregressive steps without relying entirely on attention KV caches. In parallel, whole-brain connectomes provide complete wiring topologies shaped by biological selection, yet their utility as structural priors in artificial networks remains untested.
 >
-> We connect the complete $1.81 \times 10^6$-synapse directed connectome of *Drosophila melanogaster* (28,994 neurons) into Layer 16 of SmolLM2-360M as a persistent leaky-integrator reservoir. To prevent numerical blowup, we normalize synaptic transmission using node in-degrees ($w_{ij}/\sqrt{k_{\text{in}}}$), which stabilizes the unweighted graph at dynamical criticality (largest Lyapunov exponent $\lambda = +0.0309$, branching ratio $\sigma = 1.0220$). In a degree-preserving null ablation, scrambling biological targets degrades language modeling cross-entropy loss by $+0.0781$ (+1.58%, $p < 0.01$). When clamped with synthetic sensory vectors, the graph spontaneously exhibits 94.9–97.2% population silence, matching observed Kenyon cell sparsity. Furthermore, Representational Similarity Analysis shows the recurrent state aligns strongly with physical circular heading geometry ($r_{\text{RSA}} = 0.9419$). Our results show that raw biological wiring can function as a stable, stateful inductive bias inside an existing transformer without retraining the graph.
+> We connect the complete 1.81 × 10⁶-synapse directed connectome of *Drosophila melanogaster* (28,994 neurons) into Layer 16 of SmolLM2-360M as a persistent leaky-integrator reservoir. To prevent numerical blowup, we normalize synaptic transmission using node in-degrees (w_ij / √(k_in + 1)), which stabilizes the unweighted graph at dynamical criticality (largest Lyapunov exponent λ = +0.0309, branching ratio σ = 1.0220). In a degree-preserving null ablation, scrambling biological targets degrades language modeling cross-entropy loss by ΔL = +0.0781 (+1.58%, p < 0.01). When clamped with synthetic sensory vectors, the graph spontaneously exhibits 94.9% – 97.2% population silence, matching observed Kenyon cell sparsity. Furthermore, Representational Similarity Analysis shows the recurrent state aligns strongly with physical circular heading geometry (r_RSA = 0.9419). Our results show that raw biological wiring can function as a stable, stateful inductive bias inside an existing transformer without retraining the graph.
 
 ---
 
 ## 🏛️ System Architecture
 
-SmolFly intercepts the residual stream $x_t \in \mathbb{R}^{960}$ at transformer block 16. It maps the language representation into the 28,994-dimensional biological connectome graph via $W_{\text{in}}$, runs a single sparse recurrent step over the biological wiring diagram via CSR Sparse Matrix Multiplication (SpMM), integrates continuous-time leaky membrane dynamics, applies LayerNorm, and reinjects the state back into the residual stream via scalar gate $\gamma = 0.008$.
+SmolFly intercepts the residual stream `x_t` (d_model = 960) at transformer block 16. It maps the language representation into the 28,994-dimensional biological connectome graph via `W_in`, executes a sparse recurrent step over the biological wiring diagram via CSR Sparse Matrix Multiplication (SpMM), integrates continuous-time leaky membrane dynamics, applies LayerNorm, and reinjects the state back into the residual stream via scalar gate `γ = 0.008`.
 
 ```
 Tokens:  [w_0, w_1, ..., w_t]
@@ -73,8 +73,8 @@ Tokens:  [w_0, w_1, ..., w_t]
 
 ### Biological Sub-Circuit Topology in Reservoir
 The 28,994 neurons encompass the complete adult hemibrain and ventral nerve cord:
-- **Central Complex (EB / PB, 684 neurons):** Functions as an internal ring attractor, sustaining directional heading angle representation ($r_{\text{RSA}} = 0.9419$).
-- **Mushroom Body Kenyon Cells (4,942 neurons):** High-expansion sensory encoding layer showing spontaneous $94.9\% - 97.2\%$ population silence under sensory clamping.
+- **Central Complex (EB / PB, 684 neurons):** Functions as an internal ring attractor, sustaining directional heading angle representation (`r_RSA = 0.9419`).
+- **Mushroom Body Kenyon Cells (4,942 neurons):** High-expansion sensory encoding layer showing spontaneous 94.9% – 97.2% population silence under sensory clamping.
 - **Antennal & Optic Projection Neurons (2,640 neurons):** Sensory influx hubs distributing signals across the lateral horn and calyx.
 - **Recurrent Neuropil Interneurons (20,728 neurons):** Dense, multi-synaptic backbone mediating recurrent state persistence across time steps.
 
@@ -82,89 +82,157 @@ The 28,994 neurons encompass the complete adult hemibrain and ventral nerve cord
 
 ## 📐 Mathematical Formulation
 
-### 1. In-Degree Graph Normalization
-The connectome is a directed multigraph $\mathcal{G} = (\mathcal{V}, \mathcal{E})$ with $|\mathcal{V}| = N = 28,994$ identified neurons and $|\mathcal{E}| = M = 1,814,208$ directed synaptic connections, represented by coordinate arrays $(u_{\text{src}}, v_{\text{dst}}) \in \{1, \dots, N\}^M$ and raw synapse counts $w_{\text{raw}} \in \mathbb{R}^M$.
+### Overview of Discrete Equations
 
-To avoid numerical saturation or explosion in recurrent execution, incoming synaptic edges are normalized by the post-synaptic neuron's in-degree:
-$$w_{ij} = \frac{w_{\text{raw}, ij}}{\sqrt{k_{\text{in}}(i) + 1.0}} \cdot \beta$$
+```
+1. Input Injection:           u_t = W_in · x_t + b_in
+2. Recurrent Synaptic Influx: s_t = W_conn · h_{t-1}
+3. Candidate Activation:      h̃_t = tanh(u_t + s_t)
+4. Leaky Integration:         h_t = (1 - α)·h_{t-1} + α·h̃_t
+5. Residual Reinjection:      y_t = x_t + γ·(W_out·LayerNorm(h_t) + b_out)
+6. Synaptic Scaling Rule:     w_ij = β · [ w_raw,ij / √(k_in(i) + 1.0) ]
+```
+
+---
+
+### 1. In-Degree Graph Normalization
+
+The connectome is defined as a directed multigraph `G = (V, E)` where `|V| = N = 28,994` identified neurons and `|E| = M = 1,814,208` directed synaptic connections, stored as coordinate arrays `(u_src, v_dst)` alongside raw synapse counts `w_raw`.
+
+To prevent numerical saturation or explosive recurrent amplification, incoming synaptic edges are normalized by the post-synaptic neuron's in-degree:
+
+$$
+w_{ij} = \beta \cdot \frac{w_{\text{raw}, ij}}{\sqrt{k_{\text{in}}(i) + 1.0}}
+$$
 
 where:
-- $k_{\text{in}}(i) = \sum_{e \in \mathcal{E}} \mathbb{I}(\text{dst}_e = i)$ is the in-degree of neuron $i$.
-- $\beta = 0.10$ is the global coupling constant setting the spectral radius near criticality.
+- `k_in(i) = Σ_{e ∈ E} I(dst_e = i)` is the in-degree of postsynaptic neuron `i`.
+- `β = 0.10` is the global coupling constant that positions the recurrent network at dynamical criticality.
 
-### 2. Leaky-Membrane Reservoir State Update
-At each token position $t$ with residual state $x_t \in \mathbb{R}^D$ ($D = 960$):
+---
 
-$$\mathbf{u}_t = W_{\text{in}} x_t + b_{\text{in}} \quad (W_{\text{in}} \in \mathbb{R}^{N \times D})$$
+### 2. Continuous Leaky-Membrane Reservoir
 
-$$\tilde{\mathbf{h}}_t = \tanh \left( \mathbf{u}_t + \sum_{j \in \mathcal{N}_{\text{in}}(i)} w_{ji} h_{t-1}^{(j)} \right)$$
+At each token position `t`, given residual hidden state `x_t ∈ R^D` (`D = 960`):
 
-$$\mathbf{h}_t = (1 - \alpha)\mathbf{h}_{t-1} + \alpha \tilde{\mathbf{h}}_t$$
+**Step 1: Input Injection**
 
-where $\alpha = 0.15$ is the continuous-time membrane leak rate and $\mathcal{N}_{\text{in}}(i)$ denotes the biological upstream presynaptic partners of neuron $i$.
+$$
+u_t = W_{\text{in}} x_t + b_{\text{in}}
+$$
+
+where `W_in ∈ R^{N × D}` (`28,994 × 960`) and `b_in ∈ R^N`.
+
+**Step 2: Recurrent Synaptic Influx (Sparse SpMM)**
+
+$$
+s_t = \sum_{j \in \mathcal{N}_{\text{in}}(i)} w_{ji} h_{t-1}^{(j)} = W_{\text{conn}} h_{t-1}
+$$
+
+where `W_conn ∈ R^{N × N}` is the frozen biological connectivity matrix stored in CSR format, and `N_in(i)` denotes the biological upstream presynaptic partners of neuron `i`.
+
+**Step 3: Nonlinear Candidate Activation**
+
+$$
+\tilde{h}_t = \tanh(u_t + s_t)
+$$
+
+**Step 4: Leaky Membrane Integration**
+
+$$
+h_t = (1 - \alpha) h_{t-1} + \alpha \tilde{h}_t
+$$
+
+where `α = 0.15` represents the continuous-time membrane leak rate (`α = Δt / τ`).
+
+---
 
 ### 3. Residual Reinjection
-The normalized reservoir state maps back to the residual stream:
 
-$$\mathbf{y}_t = x_t + \gamma \left( W_{\text{out}} \text{LayerNorm}(\mathbf{h}_t) + b_{\text{out}} \right)$$
+The normalized reservoir state projects back into the transformer's residual stream:
 
-with scalar gating parameter $\gamma = 0.008$. All $1.81\times 10^6$ connectome synaptic weights remain static; **only $W_{\text{in}}$, $W_{\text{out}}$, biases, and the LayerNorm parameters are trained**.
+$$
+y_t = x_t + \gamma \left( W_{\text{out}} \text{LayerNorm}(h_t) + b_{\text{out}} \right)
+$$
+
+where:
+- `W_out ∈ R^{D × N}` (`960 × 28,994`)
+- `γ = 0.008` is the adaptive scalar gate parameter.
+- All 1,814,208 biological connectome synaptic weights remain completely static and frozen. Only `W_in`, `W_out`, biases, and LayerNorm parameters are trained.
 
 ---
 
 ## 📊 Experimental Results
 
-### Summary Table (Validation Suite)
+### Validation Performance Summary
 
 | Test | Metric | Observed Value | Theoretical Target | Verdict |
 | :--- | :--- | :--- | :--- | :--- |
-| **Dynamical Stability** | Largest Lyapunov Exponent ($\lambda$) | **$+0.0309$** | $\approx 0.0$ (Edge of Chaos) | Critical regime |
-| **Branching Dynamics** | Mean Branching Ratio ($\sigma$) | **$1.0220$** | $1.0000$ (Criticality) | Non-divergent |
-| **Null Model Ablation** | Cross-Entropy Delta ($\Delta L$) | **$+0.0781$** (+1.58%) | $p < 0.01$ (Topology matters) | Statistically Significant |
-| **Kenyon Cell Sparsity** | Inactive Population % (Appetitive / Repellent) | **$94.91\% / 97.20\%$** | $90 - 95\%$ (Biological norm) | Spontaneous Sparsity |
-| **Central Complex RSA** | Spearman Rank Correlation ($r_{\text{RSA}}$) | **$0.9419$** | $p = 7.87 \times 10^{-14}$ | Heading Geometry Preserved |
+| **Dynamical Stability** | Largest Lyapunov Exponent (λ) | **+0.0309** | ≈ 0.0 (Edge of Chaos) | Critical regime |
+| **Branching Dynamics** | Mean Branching Ratio (σ) | **1.0220** | 1.0000 (Criticality) | Stable dynamics |
+| **Null Model Ablation** | Cross-Entropy Delta (ΔL) | **+0.0781** (+1.58%) | p < 0.01 (Topology matters) | Statistically Significant |
+| **Kenyon Cell Sparsity** | Inactive Population % (Appetitive / Repellent) | **94.91% / 97.20%** | 90% – 95% (Biological norm) | Spontaneous Sparsity |
+| **Central Complex RSA** | Spearman Rank Correlation (r_RSA) | **0.9419** | p = 7.87 × 10⁻¹⁴ | Heading Geometry Preserved |
 
 ---
 
-### Detailed Findings
+### Detailed Analysis
 
 #### 1. Dynamical Criticality at the Edge of Chaos
-We evaluate whether the unweighted graph operates near the computational edge of chaos. We initialize the reservoir state, introduce a random perturbation $\delta_0$ with $\|\delta_0\|_2 = 10^{-4}$, and track divergence across $T = 60$ propagation cycles over 20 runs:
-$$\lambda = \frac{1}{T} \sum_{t=1}^T \ln \frac{\|\delta_t\|_2}{\|\delta_0\|_2} = +0.0309$$
-The average branching ratio $\sigma = \frac{\langle A_{t+1} \rangle}{\langle A_t \rangle} = 1.0220$. The network operates slightly above zero, avoiding both exponential decay ($\lambda \ll 0$) and chaotic explosion ($\lambda \gg 0$).
+We test whether the scaled graph functions near the computational edge of chaos. We initialize the reservoir state, introduce a random perturbation `δ_0` with `||δ_0||₂ = 10⁻⁴`, and track divergence across `T = 60` propagation cycles over 20 runs:
+
+$$
+\lambda = \frac{1}{T} \sum_{t=1}^T \ln \frac{\|\delta_t\|_2}{\|\delta_0\|_2} = +0.0309
+$$
+
+The average branching ratio is:
+
+$$
+\sigma = \frac{\langle A_{t+1} \rangle}{\langle A_t \rangle} = 1.0220
+$$
+
+The network operates slightly above zero, avoiding both exponential dampening (`λ ≪ 0`) and chaotic explosion (`λ ≫ 0`).
 
 #### 2. Degree-Preserving Null Model Ablation
-To verify that downstream performance stems from biological graph topology rather than generic sparse recurrence, we evaluate against a degree-preserving null model:
-$$\text{dst}' = \pi(\text{dst})$$
-Each node's exact in-degree, out-degree, and weight distribution are held identical while randomizing edge target endpoints:
-- **Biological Connectome Loss**: $L_{\text{bio}} = 4.9432$
-- **Shuffled Null Graph Loss**: $L_{\text{null}} = 5.0212$
-- **Degradation**: $\Delta L = +0.0781$ (+1.58%, $p < 0.01$).
+To confirm that language performance depends on the biological graph rather than generic sparse recurrence, we evaluate against a degree-preserving null model:
 
-Scrambling the biological wiring degrades model cross-entropy, confirming that the specific evolutionary clustering and recurrence pathways provide functional inductive bias.
+$$
+\text{dst}' = \pi(\text{dst})
+$$
+
+Each node's in-degree, out-degree, and weight distribution are held constant while randomizing synaptic connections:
+- **Biological Connectome Loss**: `L_bio = 4.9432`
+- **Shuffled Null Graph Loss**: `L_null = 5.0212`
+- **Degradation**: `ΔL = +0.0781` (+1.58%, `p < 0.01`).
+
+Scrambling the wiring increases cross-entropy loss, confirming that the specific evolutionary clustering and recurrent pathways provide functional representational structure.
 
 #### 3. Emergent Kenyon Cell Sparsity Under Sensory Clamping
-In biological *Drosophila*, olfactory inputs project via the antennal lobe to mushroom body Kenyon cells, which maintain sparse firing patterns ($<10\%$ active). We select the 64 highest out-degree nodes as synthetic sensory inputs and clamp them with orthogonal patterns ($S_{\text{cosine}} = 0.0000$).
-- **Appetitive Stimulus**: **94.91%** of 28,994 neurons remain inactive ($|h_i| < 0.1$).
-- **Repellent Stimulus**: **97.20%** of 28,994 neurons remain inactive ($|h_i| < 0.1$).
+In the fruit fly, olfactory inputs project via the antennal lobe to mushroom body Kenyon cells, which maintain sparse firing patterns (<10% active). We select the 64 highest out-degree nodes as synthetic sensory inputs and clamp them with orthogonal patterns (`S_cosine = 0.0000`):
+- **Appetitive Stimulus**: **94.91%** of 28,994 neurons remain inactive (`|h_i| < 0.1`).
+- **Repellent Stimulus**: **97.20%** of 28,994 neurons remain inactive (`|h_i| < 0.1`).
 
-The graph spontaneously routes activation into sparse sub-assemblies without explicit $L_1$ penalties or threshold tuning.
+The network spontaneously routes activations into sparse sub-populations without explicit L1 penalties or threshold tuning.
 
 #### 4. Central Complex Representational Similarity Analysis (RSA)
-We test whether message passing across the connectome preserves continuous physical geometry—specifically the ring-attractor compass of the fruit fly central complex. We map 8 heading angles $\theta \in [0^\circ, 315^\circ]$ across 128 input integration nodes and construct a Representational Dissimilarity Matrix (RDM):
-$$d_{ij} = 1 - \rho(\mathbf{h}(\theta_i), \mathbf{h}(\theta_j)) \quad \text{vs.} \quad \Delta \theta_{ij} = \min(|\theta_i - \theta_j|, 2\pi - |\theta_i - \theta_j|)$$
-Spearman rank correlation yields **$r_{\text{RSA}} = 0.9419$** ($p = 7.87 \times 10^{-14}$), confirming that high-dimensional recurrent message passing accurately preserves metric angular distance.
+We test whether message passing across the connectome preserves physical continuous geometry—specifically the ring-attractor compass of the fruit fly central complex. We map 8 heading angles `θ ∈ [0°, 315°]` across 128 input integration nodes and construct a Representational Dissimilarity Matrix (RDM):
+
+$$
+d_{ij} = 1 - \rho(h(\theta_i), h(\theta_j)) \quad \text{vs.} \quad \Delta\theta_{ij} = \min(|\theta_i - \theta_j|,\, 2\pi - |\theta_i - \theta_j|)
+$$
+
+A Spearman rank correlation yields **`r_RSA = 0.9419`** (`p = 7.87 × 10⁻¹⁴`), indicating that recurrent wiring preserves metric angular distance in high-dimensional latent space.
 
 ---
 
 ## 💾 Hardware Footprint & Profiling
 
 The connectome is packed as a PyTorch Compressed Sparse Row (CSR) matrix:
-- **Index pointers (`crow_indices`)**: $28,995 \times \text{int64} = 232\text{ KB}$
-- **Column indices (`col_indices`)**: $1,814,208 \times \text{int64} = 14.51\text{ MB}$
-- **Synaptic weights (`values`)**: $1,814,208 \times \text{float32} = 7.26\text{ MB}$
-- **Total Static VRAM**: $\approx 22.0\text{ MB}$ (or $<14.5\text{ MB}$ using `int32` indices).
-- **Latency Overhead**: $<3.32\%$ forward-pass decoding penalty on an NVIDIA A100 / RTX 4090.
+- **Index pointers (`crow_indices`)**: `28,995 × int64 = 232 KB`
+- **Column indices (`col_indices`)**: `1,814,208 × int64 = 14.51 MB`
+- **Synaptic weights (`values`)**: `1,814,208 × float32 = 7.26 MB`
+- **Total Static VRAM**: **~22.0 MB** (or **<14.5 MB** using `int32` indices).
+- **Latency Overhead**: **<3.32%** forward-pass decoding penalty on an NVIDIA A100 / RTX 4090.
 
 ---
 
@@ -263,17 +331,17 @@ class SmolFlyConnectomeHook(nn.Module):
         if self.h is None or self.h.shape[0] != B:
             self.reset_state(batch_size=B, device=x_t.device)
 
-        # Eq 2: Input injection
+        # 1. Input injection
         u_t = self.w_in(x_t)
 
-        # Eq 3: SpMM recurrent influx: (N, N) @ (N, B) -> transposed to (B, N)
+        # 2. SpMM recurrent influx: (N, N) @ (N, B) -> transposed to (B, N)
         s_t = torch.sparse.mm(self.w_conn, self.h.t()).t()
         h_tilde = torch.tanh(u_t + s_t)
 
-        # Eq 4: Leaky membrane integration
+        # 3. Leaky membrane integration
         self.h = (1.0 - self.alpha) * self.h + self.alpha * h_tilde
 
-        # Eq 5: LayerNorm, output projection, and scalar-gated reinjection
+        # 4. LayerNorm, output projection, and scalar-gated reinjection
         normed_h = self.layer_norm(self.h)
         delta = self.w_out(normed_h)
         return x_t + self.gamma * delta
@@ -345,7 +413,7 @@ if __name__ == "__main__":
 
 ## 🔬 Reproducing the Null Model Ablation
 
-To verify the $+0.0781$ cross-entropy degradation ($\Delta L$) reported in Section 3.2:
+To verify the +0.0781 cross-entropy degradation (`ΔL`) reported in Section 3.2:
 
 ```python
 def generate_degree_preserving_null(w_conn_csr: torch.Tensor) -> torch.Tensor:
@@ -370,13 +438,11 @@ def generate_degree_preserving_null(w_conn_csr: torch.Tensor) -> torch.Tensor:
 
 ## 📚 Citation
 
-If you use SmolFly or biological connectome reservoir methods in your research, please cite:
-
 ```bibtex
-@inproceedings{smolfly2025iclr,
+@article{smolfly2025,
   title={SmolFly: Injecting a 1.81M-Synapse Drosophila Connectome as a Stateful Reservoir into SmolLM2},
-  author={Anonymous},
-  booktitle={Under review as a conference paper at ICLR 2025},
+  author={SmolFly Contributors},
+  journal={Preprint},
   year={2025}
 }
 ```
